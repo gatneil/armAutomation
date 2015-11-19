@@ -2,18 +2,28 @@ import argparse
 import time
 import subprocess
 import sys
+import shlex
 
 WAIT_SEC = 10
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--deployfile', required=True)
-parser.add_argument('--checkfile', required=True)
-parser.add_argument('--destroyfile', required=True)
+parser.add_argument('--prefix', required=True)
 args = parser.parse_args()
 
+rgname = args.prefix + "rg"
+depname = args.prefix + "dep"
+
+params = '{"uniqueNamePrefix":{"value":"' + args.prefix + '"},"instanceCount":{"value":"20"},"adminUsername":{"value":"ubuntu"},"adminPassword":{"value":"P4$$w0rd"}}'
+
+deployCommand = ['azure', 'group', 'create', rgname, 'West US', '-d', depname, '-f', 'wait.json', '-p', params]
+checkCommand = ['azure', 'group', 'deployment', 'show', rgname, depname]
+logCommand = ['azure', 'group', 'log', 'show', rgname, '--all']
+destroyCommand = ['azure', 'group', 'delete', '-q', rgname]
+
+numFailures = 0
 while True:
     start = time.time()
-    res = subprocess.check_output(["sh", args.deployfile]).strip()
+    res = subprocess.check_output(deployCommand).strip()
 
     provisioningResult = ""
     end = None
@@ -21,7 +31,7 @@ while True:
     while end == None:
         time.sleep(WAIT_SEC)
         try:
-            res = subprocess.check_output(["sh", args.checkfile]).strip()
+            res = subprocess.check_output(checkCommand).strip()
         except Exception as e:
             continue
 
@@ -33,6 +43,12 @@ while True:
                 elif "Failed" in line:
                     provisioningResult = "Failed"
                     end = time.time()
+                    logOutput = subprocess.check_output(logCommand, stderr=subprocess.STDOUT).strip()
+                    with open(args.prefix + 'FailureLog' + str(numFailures), 'w') as logfile:
+                        logfile.write(logOutput)
+
+                    numFailures += 1
+                    
 
             
     delta = end - start
@@ -45,7 +61,7 @@ while True:
     while True:
         try:
             time.sleep(WAIT_SEC)
-            res = subprocess.check_output(["sh", args.destroyfile], stderr=subprocess.STDOUT).strip()
+            res = subprocess.check_output(destroyCommand, stderr=subprocess.STDOUT).strip()
             break
         except Exception as e:
             continue
@@ -53,7 +69,7 @@ while True:
     while not deleted:
         time.sleep(WAIT_SEC)
         try:
-            res = subprocess.check_output(["sh", args.checkfile], stderr=subprocess.STDOUT)
+            res = subprocess.check_output(checkCommand, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             if "could not be found" in str(e.output):
                 deleted = True

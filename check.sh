@@ -1,1 +1,0 @@
-azure group deployment show "negatwaitrg" "waitDep"
