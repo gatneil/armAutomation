@@ -1,0 +1,1 @@
+azure group delete -q "negatwaitrg"
